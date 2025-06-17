@@ -5,8 +5,8 @@ Este bot monitora um canal do Telegram, filtra promoções com IA, gera links de
 
 ## Instalação
 ```bash
-git clone https://github.com/seuusuario/afiliado_bot.git
-cd afiliado_bot
+git clone https://github.com/herikk04/PromoMind.git
+cd PromoMind
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
