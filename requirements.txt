@@ -1,2 +1,11 @@
-openai
-telethon
+# 🧠 PromoMind/requirements.txt
+
+# Para interação com a API do Telegram
+telethon==1.34.0
+
+# Para interação com a API da OpenAI (GPT-4)
+openai==1.35.10
+
+# Para operações assíncronas com SQLite
+aiosqlite==0.20.0
+

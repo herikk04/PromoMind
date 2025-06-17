@@ -1,38 +1,76 @@
-from telethon import TelegramClient, events
-from config.settings import API_ID, API_HASH, BOT_TOKEN, CHANNEL_ORIGEM
-from domain.link_parser import extract_links, build_affiliate_link
-from services.database import init_db, link_exists, save_link
-from services.ai_classifier import is_relevant
-from services.telegram_sender import send_to_channel
-from services.notifier import notify_admin
-from core.logger import setup_logger
+# afiliado_bot/services/telegram_listener.py
 
-logger = setup_logger()
+from telethon import TelegramClient
+from telethon.tl.functions.channels import JoinChannelRequest
+import logging
+import asyncio
 
-client = TelegramClient("listener", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+# Importa as configurações do Telegram
+from config.settings import API_ID, API_HASH, RETRY_ATTEMPTS, RETRY_DELAY_SECONDS, SOURCE_CHANNEL_ID
 
-async def start_listener():
-    init_db()
+logger = logging.getLogger(__name__)
 
-    @client.on(events.NewMessage(chats=CHANNEL_ORIGEM))
-    async def handler(event):
-        text = event.message.message
-        links = extract_links(text)
+class TelegramListener:
+    """
+    Classe responsável por escutar novas mensagens em um canal Telegram específico.
+    """
+    def __init__(self, api_id: int, api_hash: str):
+        """
+        Inicializa o TelegramListener com as credenciais da API.
 
-        for url in links:
-            link_info = build_affiliate_link(url)
-            if not link_info:
-                continue
-            if link_exists(link_info.afiliado_url):
-                logger.info("Link já postado: %s", link_info.afiliado_url)
-                continue
-            if is_relevant(text):
-                await send_to_channel(f"{text}\n\n🔗 {link_info.afiliado_url}")
-                save_link(link_info.afiliado_url)
-                logger.info("Promoção enviada para canal destino.")
-            else:
-                await notify_admin(f"Promoção rejeitada:\n{text}")
-                logger.info("Promoção considerada irrelevante e notificada ao admin.")
+        Args:
+            api_id (int): O API ID da sua aplicação Telegram.
+            api_hash (str): O API Hash da sua aplicação Telegram.
+        """
+        self.api_id = api_id
+        self.api_hash = api_hash
+        # Cria uma instância do cliente Telegram
+        # 'session_name' é o nome do arquivo de sessão que será criado (ex: my_session.session)
+        self.client = TelegramClient('listener_session', self.api_id, self.api_hash)
+        logger.info("TelegramListener inicializado.")
 
-    logger.info("Listener iniciado. Aguardando mensagens...")
-    await client.run_until_disconnected()
+    async def connect(self):
+        """
+        Conecta o cliente Telegram. Tenta reconectar em caso de falha.
+        """
+        for attempt in range(RETRY_ATTEMPTS):
+            try:
+                logger.info(f"Tentando conectar ao Telegram (tentativa {attempt + 1}/{RETRY_ATTEMPTS})...")
+                # Inicia a sessão; se for a primeira vez, pedirá o número de telefone
+                await self.client.start()
+                logger.info("Conectado ao Telegram.")
+
+                # Tenta entrar no canal de origem se ainda não estiver nele
+                try:
+                    await self.client(JoinChannelRequest(SOURCE_CHANNEL_ID))
+                    logger.info(f"Garantido que o cliente está no canal de origem: {SOURCE_CHANNEL_ID}")
+                except Exception as e:
+                    logger.warning(f"Não foi possível entrar no canal {SOURCE_CHANNEL_ID} (pode já estar nele ou ser um canal privado). Erro: {e}")
+
+                return # Conexão bem-sucedida
+            except Exception as e:
+                logger.error(f"Erro ao conectar ao Telegram: {e}")
+                if attempt < RETRY_ATTEMPTS - 1:
+                    await asyncio.sleep(RETRY_DELAY_SECONDS) # Espera antes de tentar novamente
+                else:
+                    logger.critical("Falha crítica ao conectar ao Telegram após múltiplas tentativas. Encerrando.")
+                    raise # Re-levanta a exceção se todas as tentativas falharem
+
+    async def run_until_disconnected(self):
+        """
+        Mantém o cliente Telegram do listener rodando até ser desconectado.
+        """
+        if self.client.is_connected():
+            await self.client.run_until_disconnected()
+            logger.info("Cliente Telegram do listener desconectado.")
+        else:
+            logger.warning("Cliente Telegram do listener não estava conectado para ser executado.")
+
+    async def disconnect(self):
+        """
+        Desconecta o cliente Telegram.
+        """
+        if self.client and self.client.is_connected():
+            await self.client.disconnect()
+            logger.info("Listener desconectado do Telegram.")
+

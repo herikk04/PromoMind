@@ -1,8 +1,21 @@
-import logging
+# afiliado_bot/core/logger.py
 
-def setup_logger():
+import logging
+import sys
+
+def setup_logging():
+    """
+    Configura o sistema de logging para o projeto.
+    Mensagens INFO e superiores são enviadas para o console.
+    """
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(message)s',
+        level=logging.INFO, # Define o nível mínimo de log a ser processado
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', # Formato da mensagem de log
+        handlers=[
+            logging.StreamHandler(sys.stdout) # Envia logs para a saída padrão (console)
+        ]
     )
-    return logging.getLogger(__name__)
+    # Define o nível de log para a biblioteca telethon para evitar logs excessivos
+    logging.getLogger('telethon').setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
+
